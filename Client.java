@@ -1,8 +1,7 @@
+
 import java.io.*;
 import java.net.*;
 import java.io.UnsupportedEncodingException;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.Base64;
 import javax.crypto.Cipher;
@@ -19,63 +18,70 @@ import java.util.Random;
 import java.math.BigInteger;
 import java.security.*;
 
-class Sign{
+class Data implements Serializable{
 	
-	Sign()
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = 1L;
+	Data()
 	{
 		signedData = null;
+		data = null;
 	}
 	byte[] signedData;
+	byte[] data;
+	PublicKey publicKey;
+}
+class Hellman implements Serializable{
+
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = 1L;
+	public BigInteger p;
+	public BigInteger q;
+	public BigInteger Ya;
 }
 public class Client {
     public static void main(String[] args) throws IOException {
 
+    	
         FileInputStream fileInputStream = null;
-		PublicKey publicKey = null;
-		Signature signature = null;
-		Sign sign = new Sign();
-		try{
+        Data data = new Data();
+        Hellman hellman = new Hellman();
+        Signature signature = null;
+        PrivateKey privateKey = null;
+        try{
 		KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
 		keyPairGenerator.initialize(2048); // KeySize
 		KeyPair keyPair = keyPairGenerator.generateKeyPair();
  
-		PrivateKey privateKey = keyPair.getPrivate();
-		publicKey = keyPair.getPublic();
+		privateKey = keyPair.getPrivate();
+		data.publicKey = keyPair.getPublic();
 		
-		byte[] data = "sign me".getBytes();
-		signature = Signature.getInstance("SHA256withRSA");
-		signature.initSign(privateKey);
-		signature.update(data);
-		sign.signedData = signature.sign();
 		}
 		catch( NoSuchAlgorithmException e )
-		{
-			e.printStackTrace();
-		}
-		catch( SignatureException e )
-		{
-			e.printStackTrace();
-		}
-		catch( InvalidKeyException e )
 		{
 			e.printStackTrace();
 		}
         //String Sign = new String( signedData, "UTF-8" );
         
         Socket socket = null;
-        String host = "150.254.79.176";
+        String host = "localhost";
         String key = "klucz";
 
         socket = new Socket(host, 4444);
 
 		BigInteger r = new BigInteger( 1024, new Random());
 		r = r.nextProbablePrime();
-		BigInteger p; //= new BigInteger( 1024, new Random());
+		hellman.p = null; //= new BigInteger( 1024, new Random());
+		hellman.q = null;
 		while(true)
 		{
-			p = r.multiply( new BigInteger("2"));
-			p = p.add( new BigInteger("1"));
-	   		if( p.isProbablePrime(1) == true)
+			hellman.p = r.multiply( new BigInteger("2"));
+			hellman.p = hellman.p.add( new BigInteger("1"));
+	   		if( hellman.p.isProbablePrime(1) == true)
 			{
 				break;
 			}
@@ -85,14 +91,14 @@ public class Client {
 			}
 			
 		}
-		BigInteger q = new BigInteger( p.bitCount() - 1, new Random());
+		hellman.q = new BigInteger( hellman.p.bitCount() - 1, new Random());
 	    while(true)
 		{
 			BigInteger modP = new BigInteger("1");
-			modP.mod( p );
+			modP.mod( hellman.p );
 			
-			BigInteger testg2 = q.pow( 2 );
-			BigInteger testgR = q.modPow( r, new BigInteger("1") );
+			BigInteger testg2 = hellman.q.pow( 2 );
+			BigInteger testgR = hellman.q.modPow( r, new BigInteger("1") );
 			
 			if( !testg2.equals( modP) && !testgR.equals( modP) )
 			{
@@ -100,13 +106,13 @@ public class Client {
 			}
      		else
 			{	
-				q = new BigInteger( p.bitCount(), new Random());
+     			hellman.q = new BigInteger( hellman.p.bitCount(), new Random());
 			} 
 			
 		}
 		System.out.println("2");
 		
-        File file = new File("Client.pdf");
+        File file = new File("Nowy dokument tekstowy.txt");
         byte[] bFile = new byte[(int) file.length()];
         byte[] bytes = new byte[16 * 4096];
 
@@ -119,24 +125,47 @@ public class Client {
         ObjectOutputStream os = new ObjectOutputStream(socket.getOutputStream());
         DataOutputStream dOut = new DataOutputStream(socket.getOutputStream());
 		DataInputStream dIn = new DataInputStream(socket.getInputStream());
-		System.out.println("4");
-	//	os.writeObject( sign );
-		os.writeObject( publicKey );
-		dOut.writeUTF(p.toString());
-		dOut.writeUTF(q.toString());
-		System.out.println("5");
+		
 		Random random = new Random();
-		BigInteger Xa = new BigInteger( p.bitCount() - 1, new Random() );//    random.nextInt(p-1)+1;
+		BigInteger Xa = new BigInteger( hellman.p.bitCount() - 1, new Random() );//    random.nextInt(p-1)+1;
 		System.out.println("Xa - " + Xa );
 		
-		BigInteger Ya = q.modPow( Xa, p );
-		System.out.println("Ya - " + Ya );		
-		dOut.writeUTF( Ya.toString() );
+		hellman.Ya = hellman.q.modPow( Xa, hellman.p );
+		System.out.println("Ya - " + hellman.Ya );		
 		
+		
+		
+		try {
+			data.data = convertToBytes( hellman );
+			signature = Signature.getInstance("SHA256withRSA");
+			signature.initSign(privateKey);
+			signature.update(data.data);
+			data.signedData = signature.sign();
+		} 
+		catch (NoSuchAlgorithmException e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		}
+		catch (InvalidKeyException e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		}
+		catch (SignatureException e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		}
+		
+		
+		
+		os.writeObject( data );
+		
+		
+		int i = dIn.readInt();
+		System.out.println("test3");
 		BigInteger Yb = new BigInteger( dIn.readUTF());
 		System.out.println( "Yb - " + Yb );
 	
-		BigInteger S = Yb.modPow(Xa, p);
+		BigInteger S = Yb.modPow(Xa, hellman.p);
 		
 		System.out.println("S - " + S );
 		
@@ -153,6 +182,20 @@ public class Client {
         out.close();
         socket.close();
     }
+    private static byte[] convertToBytes(Hellman hellman) throws IOException {
+        try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
+             ObjectOutput out = new ObjectOutputStream(bos)) {
+            out.writeObject(hellman);
+            return bos.toByteArray();
+        } 
+    }
+    private static Hellman convertFromBytes(byte[] bytes) throws IOException, ClassNotFoundException {
+        try (ByteArrayInputStream bis = new ByteArrayInputStream(bytes);
+             ObjectInput in = new ObjectInputStream(bis)) {
+            return (Hellman)in.readObject();
+        } 
+    }
+    
 }
 
 class AES {
